@@ -29,8 +29,9 @@ exports.login = function(req, res){
   var workflow = req.app.utility.workflow(req, res);
 
   workflow.on('validate', function() {
-    if (!req.body.username) {
+    if (!(req.body.username || req.body.email)) {
       workflow.outcome.errfor.username = 'required';
+      workflow.outcome.errfor.email = 'required';
     }
 
     if (!req.body.password) {
@@ -41,7 +42,23 @@ exports.login = function(req, res){
       return workflow.emit('response');
     }
 
-    workflow.emit('abuseFilter');
+    if (!req.body.username && req.body.email) {
+      req.app.db.models.User.findOne({ 'email': req.body.email }, function(err, user) {
+        if (err) {
+          return workflow.emit('exception', err);
+        }
+
+        if (user) {
+          req.body.username = user.username;
+          workflow.emit('abuseFilter');
+        } else {
+          workflow.outcome.errors.push('No username associated with the supplied email address.');
+          return workflow.emit('response');
+        }
+      });
+    } else {
+      workflow.emit('abuseFilter');
+    }
   });
 
   workflow.on('abuseFilter', function() {
